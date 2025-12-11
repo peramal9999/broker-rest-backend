@@ -1,6 +1,7 @@
 package com.radianbroker.controller;
 
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -10,6 +11,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -60,6 +62,26 @@ public class AuthController {
 
 	@Autowired
 	private CookieUtil cookieUtil;
+	
+	
+	@Value("${radianapp.session.directlogin.enabled}")
+	private boolean directloginEnabled;
+
+	@Value("${radianapp.session.radian.url}")
+	private String radianUrl;
+	
+	@GetMapping("/app-config")
+	public ResponseEntity<?> getAppConfig() {
+		try {
+			  HashMap<String, Object> appConfig = new HashMap<>();
+			  appConfig.put("directloginEnabled", directloginEnabled);
+			  appConfig.put("radianUrl", radianUrl);
+			return ResponseEntity.ok(appConfig);
+		} catch (Exception e) {
+			e.printStackTrace();
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getLocalizedMessage());
+		}
+	}
 
 	@PostMapping("/signin")
 	public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {

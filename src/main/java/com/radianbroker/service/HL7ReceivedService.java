@@ -8,5 +8,5 @@ import org.springframework.stereotype.Service;
 public interface HL7ReceivedService {
     Object getHL7ReceivedMessages(HL7ReceivedSearchRequest hl7ReceivedSearchRequest);
 
-    Resource getHL7ReceivedMessage(long id);
+    Resource getHL7ReceivedMessage(Long id) throws Exception;
 }

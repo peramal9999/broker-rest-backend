@@ -2,11 +2,15 @@ package com.radianbroker.service.impl;
 
 import com.radianbroker.entity.HL7Received;
 import com.radianbroker.entity.Ris;
+import com.radianbroker.exceptions.ResourceNotFoundException;
 import com.radianbroker.payload.request.HL7ReceivedSearchRequest;
 import com.radianbroker.repository.HL7ReceivedRepository;
+import com.radianbroker.service.FileSystemStorageService;
 import com.radianbroker.service.HL7ReceivedService;
 import com.radianbroker.service.RisService;
 import com.radianbroker.utils.DateUtils;
+
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -33,52 +37,61 @@ public class HL7ReceivedServiceImpl implements HL7ReceivedService {
 
     @Autowired
     RisService risService;
+    
+    @Autowired
+    FileSystemStorageService fileSystemStorageService;
 
     @Override
     public Map<String, Object> getHL7ReceivedMessages(HL7ReceivedSearchRequest request) {
+       // TODO Auto-generated method stub
 
-        List<HL7Received> hl7ReceivedList = new ArrayList<HL7Received>();
+       List<HL7Received> hl7ReceivedList = new ArrayList<HL7Received>();
 
-        Ris ris = risService.getByRisCode(risCode);
-        request.setRisId(ris.getRisId());
-        Pageable paging = PageRequest.of(request.getPageNo(), request.getSize());
-        ZoneOffset zoneOffset = DateUtils.getZoneOffset(timeZone);
+       Pageable paging = PageRequest.of(request.getPageNo(), request.getSize());
+       ZoneOffset zoneOffset = DateUtils.getZoneOffset(timeZone);
 
-        Date startDate = null;
-        Date endDate = null;
+       Date startDate = null;
+       Date endDate = null;
 
-        if (request.getStartDate() != null && !request.getStartDate().isEmpty() &&
-                request.getEndDate() != null && !request.getEndDate().isEmpty()) {
+       if (request.getStartDate() != null && !request.getStartDate().isEmpty() &&
+             request.getEndDate() != null && !request.getEndDate().isEmpty()) {
 
-            LocalDate startLocalDate = LocalDate.parse(request.getStartDate());
-            LocalDate endLocalDate = LocalDate.parse(request.getEndDate());
+          LocalDate startLocalDate = LocalDate.parse(request.getStartDate());
+          LocalDate endLocalDate = LocalDate.parse(request.getEndDate());
 
-            startDate = Date.from(
-                    startLocalDate.atStartOfDay().toInstant(zoneOffset)
-            );
+          startDate = Date.from(
+                startLocalDate.atStartOfDay().toInstant(zoneOffset)
+          );
 
-            endDate = Date.from(
-                    endLocalDate.atTime(LocalTime.MAX).toInstant(zoneOffset)
-            );
-        }
+          endDate = Date.from(
+                endLocalDate.atTime(LocalTime.MAX).toInstant(zoneOffset)
+          );
+       }
 
-        Page<HL7Received> pages = hl7ReceivedRepository
-                .findByFilterAll(startDate,endDate,request.getMessageTypes(),request.getMips(),request.getOrderNo(),request.getRisId(),request.getStatuses(), paging);
+       Page<HL7Received> pages = hl7ReceivedRepository
+             .findByFilterAll(startDate,endDate,request.getMessageTypes(),request.getMips(),request.getOrderNo(),request.getRisId(),request.getStatuses(), paging);
 
-        if (pages != null && pages.getContent() != null) {
-            hl7ReceivedList = pages.getContent();
-        }
+       if (pages != null && pages.getContent() != null) {
+          hl7ReceivedList = pages.getContent();
+       }
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("hl7ReceivedList", hl7ReceivedList);
-        response.put("currentPage", pages.getNumber());
-        response.put("totalItems", pages.getTotalElements());
-        response.put("totalPages", pages.getTotalPages());
-        return response;
+       Map<String, Object> response = new HashMap<>();
+       response.put("hl7ReceivedList", hl7ReceivedList);
+       response.put("currentPage", pages.getNumber());
+       response.put("totalItems", pages.getTotalElements());
+       response.put("totalPages", pages.getTotalPages());
+       return response;
     }
+
+
     @Override
-    public Resource getHL7ReceivedMessage(long id) {
-        return null;
+    public Resource getHL7ReceivedMessage(Long id) throws Exception {
+       // TODO Auto-generated method stub
+
+       HL7Received hl7Received = hl7ReceivedRepository.findById(id)
+             .orElseThrow(() -> new ResourceNotFoundException("HL7 Received record not found for id: " + id));
+
+       return fileSystemStorageService.loadAsResource(hl7Received.getDirectoryPath());
     }
 
 }

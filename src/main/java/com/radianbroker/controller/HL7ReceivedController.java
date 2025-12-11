@@ -41,7 +41,6 @@ public class HL7ReceivedController {
 			return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
 		}
 	}
-	
 //	@DeleteMapping("/hl7-received-message")
 //	public ResponseEntity<?> deleteL7ReceivedMessage() {
 //		 
