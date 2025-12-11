@@ -15,4 +15,6 @@ public interface MipRepository extends JpaRepository<Mip, Long> {
     @Query(nativeQuery = true, value = "SELECT * FROM mips where ris_id=?1")
     List<Mip> findAllByRisId(long id);
 
+    @Query(value = "SELECT mip_id FROM `mips` WHERE ris_id=?1", nativeQuery = true)
+    List<Long> getMipIdsByRisId(Long risId);
 }
