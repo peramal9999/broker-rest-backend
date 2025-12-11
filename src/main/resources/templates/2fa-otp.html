@@ -1,0 +1,19 @@
+<html>
+
+<body>
+	<p>Dear <#if fullName??>${fullName}<#else>
+		</#if>,</p>
+	<p>Congratulations, you have successfully logged in.</p>
+	<p>Your One Time Password is generated</p>
+	<p>
+		<#if Otp??>${Otp}<#else>
+		</#if>
+	</p>
+	<p>Please use this One Time Password to complete verification</p>
+	<p> Regards,<br>
+		<#if appName??>${appName}<#else>
+		</#if>
+	</p>
+</body>
+
+</html>
