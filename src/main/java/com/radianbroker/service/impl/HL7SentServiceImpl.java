@@ -54,6 +54,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -153,9 +155,7 @@ public class HL7SentServiceImpl implements HL7SentService {
     @Autowired
     AttachmentRepository attachmentRepository;
 
-    @Autowired
-    HL7RetryService  hl7RetryService;
-    @Override
+     @Override
     public Message sendMessage(String host, int port, ORU_R01 oruR01) {
 
         try {
@@ -956,7 +956,7 @@ public class HL7SentServiceImpl implements HL7SentService {
 
 //					scheduler.schedule(new ReportHoldQueueTask(this, visitReport), scheduledDate);
 
-                    Message ackResponse = hl7RetryService.sendORUHL7(hl7Sent.getId(), risHL7Config.getHl7SendHost(),
+                    Message ackResponse = sendORUHL7(hl7Sent.getId(), risHL7Config.getHl7SendHost(),
                             risHL7Config.getHl7SendPort(), oruR01);
 
                     // Need to fetch again so that no of retry count is updated in hl7RetryService
@@ -1044,4 +1044,24 @@ public class HL7SentServiceImpl implements HL7SentService {
         }
     }
 
+    @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 30000, multiplier = 2), value = { HL7SendException.class })
+    @Override
+    public Message sendORUHL7(Long hl7SentId, String hl7SendHost, Integer hl7SendPort, ORU_R01 oruR01) {
+
+        HL7Sent hl7Sent = hl7SentRepository.findById(hl7SentId).orElseThrow(
+                () -> new ResourceNotFoundException("HL7Sent not found for id: " + hl7SentId));
+        int retryCount = hl7Sent.getRetryCount();
+
+        try {
+            System.out.println("sending..." + retryCount);
+            Message message = sendMessage(hl7SendHost, hl7SendPort, oruR01);
+            return message;
+        } catch (HL7SendException ex) {
+            System.out.println("in catch HL7SendException...");
+            retryCount++;
+            hl7Sent.setRetryCount(retryCount);
+            hl7SentRepository.save(hl7Sent);
+            throw ex;
+        }
+    }
  }
