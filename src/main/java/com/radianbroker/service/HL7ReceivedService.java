@@ -11,5 +11,5 @@ public interface HL7ReceivedService {
 
     Resource getHL7ReceivedMessage(Long id) throws Exception;
 
-    HL7Received findById(Long updatedByMsgId);
+    HL7Received findById(Long messageId);
 }
