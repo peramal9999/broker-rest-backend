@@ -1,7 +1,6 @@
 package com.radianbroker.service.impl;
 
 import com.radianbroker.entity.HL7Received;
-import com.radianbroker.entity.Ris;
 import com.radianbroker.exceptions.ResourceNotFoundException;
 import com.radianbroker.payload.request.HL7ReceivedSearchRequest;
 import com.radianbroker.repository.HL7ReceivedRepository;
@@ -92,6 +91,12 @@ public class HL7ReceivedServiceImpl implements HL7ReceivedService {
              .orElseThrow(() -> new ResourceNotFoundException("HL7 Received record not found for id: " + id));
 
        return fileSystemStorageService.loadAsResource(hl7Received.getDirectoryPath());
+    }
+    @Override
+    public HL7Received findById(Long messageId) {
+        // TODO Auto-generated method stub
+        return hl7ReceivedRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("HL7 received record not found for id: " + messageId));
     }
 
 }

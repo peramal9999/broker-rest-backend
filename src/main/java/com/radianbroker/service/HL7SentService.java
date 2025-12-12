@@ -14,9 +14,9 @@ public interface HL7SentService {
 
     Object resendHL7SentMessage(String messageControlId) throws Exception;
 
-    Resource getHL7SentMessage(String messageControlId);
-
     public Message sendMessage(String host, int port, ORU_R01 oruR01);
 
     public void movedVisitToReport(Long risId, Long orderNo);
+
+    Resource getHL7SentMessage(String messageControlId) throws Exception;
 }

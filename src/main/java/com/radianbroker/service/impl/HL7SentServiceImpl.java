@@ -854,8 +854,14 @@ public class HL7SentServiceImpl implements HL7SentService {
     }
 
     @Override
-    public Resource getHL7SentMessage(String messageControlId) {
-        return null;
+    public Resource getHL7SentMessage(String messageControlId) throws Exception {
+        // TODO Auto-generated method stub
+        HL7Sent hl7Sent = hl7SentRepository.findByMessageControlId(messageControlId);
+        if (hl7Sent == null) {
+            throw new ResourceNotFoundException("Record not found for messageControlId: " + messageControlId);
+        }
+
+        return fileSystemStorageService.loadAsResource(hl7Sent.getDirectoryPath());
     }
 
 
