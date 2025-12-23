@@ -105,7 +105,7 @@ public class VisitServiceImpl implements VisitService {
             @Override
             public String getRisCode() {
                 // TODO Auto-generated method stub
-                return null;
+                return ris.getRisCode();
             }
 
         };
