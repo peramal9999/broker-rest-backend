@@ -548,11 +548,20 @@ public class HL7SentServiceImpl implements HL7SentService {
         return null;
     }
 
-    private ORU_R01 constructORUR01V2(String messageControlId, HL7Received hl7Received, Ris ris, VisitDTO visitDto,
-                                      Patient patient, ObservingPractitioner mis1Practitioner, List<Diagram> diagrams) throws Exception {
+    private ORU_R01 constructORUR01V2(
+            String messageControlId,
+            HL7Received hl7Received,
+            Ris ris,
+            VisitDTO visitDto,
+            Patient patient,
+            ObservingPractitioner mis1Practitioner,
+            List<Diagram> diagrams) throws Exception {
+
         String timeStamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
 
-        String ormMessage = fileSystemStorageService.readHL7MessagesFromFile(hl7Received.getDirectoryPath());
+        String ormMessage = fileSystemStorageService
+                .readHL7MessagesFromFile(hl7Received.getDirectoryPath());
+
         if (ormMessage == null) {
             throw new ResourceNotFoundException(
                     "Message not found at directory path: " + hl7Received.getDirectoryPath());
@@ -561,191 +570,201 @@ public class HL7SentServiceImpl implements HL7SentService {
         Message message = parser.parse(ormMessage);
         ORM_O01 ormO01 = (ORM_O01) message;
 
-// 1. Initial message with MSH, PID, PV1 segments
+        // 1. Initial message with MSH, PID, PV1
         StringBuilder sb = new StringBuilder();
-        sb.append(ormO01.getMSH().encode());
-        sb.append("\r");
-        sb.append(ormO01.getPATIENT().getPID().encode());
-        sb.append("\r");
+        sb.append(ormO01.getMSH().encode()).append("\r");
+        sb.append(ormO01.getPATIENT().getPID().encode()).append("\r");
         sb.append(ormO01.getPATIENT().getPATIENT_VISIT().getPV1().encode());
 
-// 2. Append OrderSegment[ORC] for Prime Visit
-        String oruOrderSegment = getOrderSegment(visitDto.getVisitNo(), ormMessage);
+        // 2. ORC for prime visit
         sb.append("\r");
-        sb.append(oruOrderSegment);
+        sb.append(getOrderSegment(visitDto.getVisitNo(), ormMessage));
 
-// 3. Append OrderSegment[ORC] for Non-Prime Visit
-        List<Visit> nonPrimeVisits = visitRepository.findByOrderNoAndRisIdAndPrimeStudy(visitDto.getOrderNo(),
-                visitDto.getRisId(), false);
+        // 3. ORC for non-prime visits
+        List<Visit> nonPrimeVisits =
+                visitRepository.findByOrderNoAndRisIdAndPrimeStudy(
+                        visitDto.getOrderNo(),
+                        visitDto.getRisId(),
+                        false);
+
         for (Visit nonPrimeVisit : nonPrimeVisits) {
-            HL7Received hl7Rcvd = hl7ReceivedService.findById(nonPrimeVisit.getUpdatedByMsgId());
-            String ormMsg = fileSystemStorageService.readHL7MessagesFromFile(hl7Rcvd.getDirectoryPath());
-            String oruOrderSgmnt = getOrderSegment(nonPrimeVisit.getVisitNo(), ormMsg);
+            HL7Received hl7Rcvd =
+                    hl7ReceivedService.findById(nonPrimeVisit.getUpdatedByMsgId());
+
+            String ormMsg =
+                    fileSystemStorageService.readHL7MessagesFromFile(
+                            hl7Rcvd.getDirectoryPath());
+
             sb.append("\r");
-            sb.append(oruOrderSgmnt);
+            sb.append(getOrderSegment(nonPrimeVisit.getVisitNo(), ormMsg));
         }
 
-// 1.Convert ORM to ORU
+        // 4. Parse ORU
         ORU_R01 oruR01 = new ORU_R01();
         oruR01.setParser(parser);
         oruR01.parse(sb.toString());
 
-// 2.Update MSH segment fields
-        String[] array = MessageType.ORU_R01.name().split("_");
-        String messageType = array[0];
-        String triggerEvent = array[1];
-        oruR01.getMSH().getMsh3_SendingApplication().getNamespaceID().setValue(sendingApplication.toUpperCase());
-        oruR01.getMSH().getMsh5_ReceivingApplication().getNamespaceID().setValue(ris.getName().toUpperCase());
-        oruR01.getMSH().getMsh7_DateTimeOfMessage().getTs1_TimeOfAnEvent().setValue(timeStamp);
-        oruR01.getMSH().getMsh9_MessageType().getCm_msg1_MessageType().setValue(messageType);
-        oruR01.getMSH().getMsh10_MessageControlID().setValue(messageControlId);
-        oruR01.getMSH().getMessageType().getTriggerEvent().setValue(triggerEvent);
+        // 5. Update MSH
+        String[] msgType = MessageType.ORU_R01.name().split("_");
+        oruR01.getMSH().getMsh3_SendingApplication()
+                .getNamespaceID().setValue(sendingApplication.toUpperCase());
+        oruR01.getMSH().getMsh5_ReceivingApplication()
+                .getNamespaceID().setValue(ris.getName().toUpperCase());
+        oruR01.getMSH().getMsh7_DateTimeOfMessage()
+                .getTs1_TimeOfAnEvent().setValue(timeStamp);
+        oruR01.getMSH().getMsh9_MessageType()
+                .getCm_msg1_MessageType().setValue(msgType[0]);
+        oruR01.getMSH().getMessageType()
+                .getTriggerEvent().setValue(msgType[1]);
+        oruR01.getMSH().getMsh10_MessageControlID()
+                .setValue(messageControlId);
 
-// 3.Update PID segment
-        oruR01.getRESPONSE().getPATIENT().getPID().getPid3_PatientIDInternalID(0).getCx1_ID()
-                .setValue(patient.getPid());
-
-        List<ORU_R01_ORDER_OBSERVATION> oruR01OrderObservationList = oruR01.getRESPONSE().getORDER_OBSERVATIONAll();
+        // 6. Update PID
+        oruR01.getRESPONSE().getPATIENT().getPID()
+                .getPid3_PatientIDInternalID(0)
+                .getCx1_ID().setValue(patient.getPid());
 
         String htmlReport = cleanHtmlReportDocument(visitDto.getReportText());
 
         String prevEnteringOrganization = null;
         String technicianId = null, technicianFamilyName = null, technicianGivenName = null;
         String placerOrderNumber = null;
+
         AtomicInteger obrCount = new AtomicInteger(1);
-        for (ORU_R01_ORDER_OBSERVATION orderObservation : oruR01OrderObservationList) {
-// 3.Update ORC segment fields
+
+        for (ORU_R01_ORDER_OBSERVATION orderObservation :
+                oruR01.getRESPONSE().getORDER_OBSERVATIONAll()) {
+
+            // ORC
             if (!orderObservation.getORC().isEmpty()) {
                 ORC orc = orderObservation.getORC();
                 orc.getOrc5_OrderStatus().setValue("CM");
-                String enteringOrganization = orc.getOrc17_EnteringOrganization().getCe1_Identifier().getValue();
-                prevEnteringOrganization = enteringOrganization;
+
+                prevEnteringOrganization =
+                        orc.getOrc17_EnteringOrganization()
+                           .getCe1_Identifier().getValue();
 
                 if (orc.getOrc12_OrderingProvider().length > 0) {
-                    XCN[] technician = orc.getOrc12_OrderingProvider();
-                    technicianId = technician[0].getIDNumber().getValue();
-                    technicianFamilyName = technician[0].getFamilyName().getValue();
-                    technicianGivenName = technician[0].getGivenName().getValue();
+                    XCN tech = orc.getOrc12_OrderingProvider()[0];
+                    technicianId = tech.getIDNumber().getValue();
+                    technicianFamilyName = tech.getFamilyName().getValue();
+                    technicianGivenName = tech.getGivenName().getValue();
                 }
-                placerOrderNumber = orc.getPlacerOrderNumber(0).getEi1_EntityIdentifier().getValue();
+
+                placerOrderNumber =
+                        orc.getPlacerOrderNumber(0)
+                           .getEi1_EntityIdentifier().getValue();
             }
 
-// 4.Update OBR segment fields
+            // OBR
             OBR obr = orderObservation.getOBR();
+            String serviceText =
+                    obr.getObr4_UniversalServiceIdentifier()
+                       .getCe2_Text().getValue();
 
-            String universalServiceIdentifierText = obr.getObr4_UniversalServiceIdentifier().getCe2_Text().getValue();
-            obr.getObr1_SetIDObservationRequest().setValue(Integer.toString(obrCount.get()));
+            obr.getObr1_SetIDObservationRequest()
+                    .setValue(String.valueOf(obrCount.get()));
             obr.getObr4_UniversalServiceIdentifier().clear();
-
             obr.getObr25_ResultStatus().setValue("F");
 
-            obr.getObr31_ReasonForStudy(0).getCe1_Identifier()
-                    .setValue(prevEnteringOrganization + "-" + universalServiceIdentifierText);
+            obr.getObr31_ReasonForStudy(0)
+                    .getCe1_Identifier()
+                    .setValue(prevEnteringOrganization + "-" + serviceText);
 
-            obr.getObr32_PrincipalResultInterpreter().getOPName().getCn1_IDNumber()
+            obr.getObr32_PrincipalResultInterpreter()
+                    .getOPName().getCn1_IDNumber()
                     .setValue(mis1Practitioner.getUserName());
-            obr.getObr32_PrincipalResultInterpreter().getStartDateTime().getTs1_TimeOfAnEvent()
-                    .setValue(mis1Practitioner.getLastName());
-            obr.getObr32_PrincipalResultInterpreter().getEndDateTime().getTs1_TimeOfAnEvent()
-                    .setValue(mis1Practitioner.getFirstName());
 
-            obr.getObr33_AssistantResultInterpreter(0).getOPName().getCn1_IDNumber()
+            obr.getObr33_AssistantResultInterpreter(0)
+                    .getOPName().getCn1_IDNumber()
                     .setValue(mis1Practitioner.getUserName());
-            obr.getObr33_AssistantResultInterpreter(0).getStartDateTime().getTs1_TimeOfAnEvent()
-                    .setValue(mis1Practitioner.getLastName());
-            obr.getObr33_AssistantResultInterpreter(0).getEndDateTime().getTs1_TimeOfAnEvent()
-                    .setValue(mis1Practitioner.getFirstName());
 
-            obr.getObr34_Technician(0).getOPName().getCn1_IDNumber().setValue(technicianId);
-            obr.getObr34_Technician(0).getStartDateTime().getTs1_TimeOfAnEvent().setValue(technicianFamilyName);
-            obr.getObr34_Technician(0).getEndDateTime().getTs1_TimeOfAnEvent().setValue(technicianGivenName);
+            obr.getObr34_Technician(0)
+                    .getOPName().getCn1_IDNumber()
+                    .setValue(technicianId);
 
-            obr.getObr35_Transcriptionist(0).getOPName().getCn1_IDNumber().setValue(technicianId);
-            obr.getObr35_Transcriptionist(0).getStartDateTime().getTs1_TimeOfAnEvent().setValue(technicianFamilyName);
-            obr.getObr35_Transcriptionist(0).getEndDateTime().getTs1_TimeOfAnEvent().setValue(technicianGivenName);
+            obr.getObr35_Transcriptionist(0)
+                    .getOPName().getCn1_IDNumber()
+                    .setValue(technicianId);
 
-// 4.Update OBX segment fields
+            // OBX – report text
             OBX obx = orderObservation.getOBSERVATION().getOBX();
-
             obx.getObx1_SetIDOBX().setValue("1");
             obx.getObx2_ValueType().setValue("FT");
-            obx.getObx3_ObservationIdentifier().getIdentifier().setValue(placerOrderNumber);
+            obx.getObx3_ObservationIdentifier()
+                    .getIdentifier().setValue(placerOrderNumber);
 
             FT ft = new FT(oruR01);
             ft.setValue(htmlReport);
-            Varies value = obx.getObservationValue(0);
-            value.setData(ft);
+            obx.getObservationValue(0).setData(ft);
 
             obx.getObx11_ObservResultStatus().setValue("F");
-            obx.getObx14_DateTimeOfTheObservation().getTs1_TimeOfAnEvent().setValue(timeStamp);
+            obx.getObx14_DateTimeOfTheObservation()
+                    .getTs1_TimeOfAnEvent().setValue(timeStamp);
 
-// 4.Update OBX segment fields
-// Prepare draft file safely
-            File draftFile = null;
+            // ---- Worksheet attachment ----
+            File mergedFile = null;
+
             try {
-                Attachment attachment = attachmentRepository.findByRisIdAndOrderNoAndName(ris.getRisId(),
-                        visitDto.getOrderNo(), "DRAFT_WORKSHEET_" + visitDto.getOrderNo() + ".pdf");
+                File draftFile = null;
+                Attachment attachment =
+                        attachmentRepository.findByRisIdAndOrderNoAndName(
+                                ris.getRisId(),
+                                visitDto.getOrderNo(),
+                                "DRAFT_WORKSHEET_" + visitDto.getOrderNo() + ".pdf");
+
                 if (attachment != null) {
-                    draftFile = fileSystemStorageService.getFile(attachment.getUrl());
-                    if (!draftFile.exists()) {
-                        throw new StorageException(
-                                "DraftWorksheet file not found on disk for attachment ID: " + attachment.getId());
+                    draftFile =
+                            fileSystemStorageService.getFile(attachment.getUrl());
+                }
+
+                if ((draftFile != null && draftFile.exists())
+                        || (diagrams != null && !diagrams.isEmpty())) {
+
+                    mergedFile = mergeDraftAndDiagramsToPdf(draftFile, diagrams);
+                }
+
+                if (mergedFile != null && mergedFile.exists()) {
+                    String base64 =
+                            fileSystemStorageService.encodeFileToBase64(mergedFile);
+
+                    int idx = orderObservation.getOBSERVATIONReps();
+                    ORU_R01_OBSERVATION obs =
+                            orderObservation.insertOBSERVATION(idx);
+
+                    OBX attachObx = obs.getOBX();
+                    attachObx.getSetIDOBX()
+                            .setValue(String.valueOf(idx + 1));
+                    attachObx.getValueType().setValue("ED");
+                    attachObx.getObservationIdentifier()
+                            .getCe1_Identifier().setValue("U");
+                    attachObx.getObservationIdentifier()
+                            .getCe2_Text().setValue("WORKSHEET 1");
+
+                    ED ed = new ED(oruR01);
+                    ed.getDataSubtype().setValue("pdf");
+                    ed.getEncoding().setValue("Base64");
+                    ed.getData().setValue(base64);
+
+                    attachObx.getObservationValue(0).setData(ed);
+                }
+
+            } finally {
+                if (mergedFile != null && mergedFile.exists()) {
+                    if (!mergedFile.delete()) {
+                        logger.warn(
+                                "Failed to delete temporary worksheet file: {}",
+                                mergedFile.getAbsolutePath());
                     }
                 }
-            } catch (StorageException e) {
-                logger.warn("Skipping draft worksheet: {}", e.getMessage());
-                draftFile = null; // ensure it's null if any problem
-            }
-
-// Merge draft + diagrams
-            File mergedFile = null;
-            if ((draftFile != null && draftFile.exists()) || (diagrams != null && !diagrams.isEmpty())) {
-                mergedFile = mergeDraftAndDiagramsToPdf(draftFile, diagrams);
-            }
-
-            if (mergedFile != null && mergedFile.exists()) {
-                String base64String = fileSystemStorageService.encodeFileToBase64(mergedFile);
-
-// Append a new OBSERVATION repetition safely at the end
-                int newObsIndex = orderObservation.getOBSERVATIONReps();
-                ORU_R01_OBSERVATION newObservation = orderObservation.insertOBSERVATION(newObsIndex);
-
-                obx = newObservation.getOBX();
-
-                obx.getSetIDOBX().setValue(Integer.toString(newObsIndex + 1)); // HL7 repeats start at 1
-                obx.getValueType().setValue("ED");
-                obx.getObservationIdentifier().getCe1_Identifier().setValue("U");
-                obx.getObservationIdentifier().getCe2_Text().setValue("WORKSHEET " + 1);
-                obx.getObservationIdentifier().getCe3_NameOfCodingSystem().setValue("L");
-                obx.getObservationSubID().setValue("DATA^" + mergedFile.getName());
-
-                ED ed = new ED(oruR01);
-                ed.getDataSubtype().setValue("pdf");
-                ed.getEncoding().setValue("Base64");
-                ed.getData().setValue(base64String);
-
-                Varies observationValue = obx.getObservationValue(0);
-                observationValue.setData(ed);
-
-// Clean up the temporary merged file after use
-                if (!mergedFile.delete()) {
-                    logger.warn("Failed to delete temporary worksheet file: {}", mergedFile.getAbsolutePath());
-                }
-            } else {
-                logger.info("No merged file created, skipping OBSERVATION insertion for orderObservation at index: "
-                        + obrCount.get());
             }
 
             obrCount.incrementAndGet();
-            if (mergedFile != null && mergedFile.exists()) {
-                mergedFile.delete();
-            } else {
-                logger.info("Failed to delete temporary worksheet file: ");
-            }
-
         }
+
         return oruR01;
     }
+
 
     public File mergeDraftAndDiagramsToPdf(File draftPdf, List<Diagram> diagrams) throws Exception {
         com.itextpdf.text.Document document = new com.itextpdf.text.Document();
